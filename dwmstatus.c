@@ -230,6 +230,24 @@ execscript(char *cmd)
 	return smprintf("%s", retval);
 }
 
+char * getvpnstatus(void)
+{
+	char *status;
+	char *lockdown;
+
+	status = execscript("mullvad status");
+
+	if (strcmp(status, "Disconnected") == 0)
+		return smprintf("%s", "0");
+
+	lockdown = execscript("mullvad lockdown-mode get");
+
+	if (strcmp(lockdown, "Network traffic will be allowed when the VPN is disconnected") == 0)
+		return smprintf("%s", "1");
+
+	return smprintf("%s", "2");
+}
+
 int
 main(void)
 {
@@ -238,21 +256,27 @@ main(void)
 	char *bat2;
 	char *kbmap;
 	char *tmlocal;
+	char *network;
+	char *vpn;
 
 	if (!(dpy = XOpenDisplay(NULL))) {
 		fprintf(stderr, "dwmstatus: cannot open display.\n");
 		return 1;
 	}
 
-	for (;;sleep(30)) {
+	for (;;sleep(10)) {
 		bat1 = getbattery("/sys/class/power_supply/BAT0");
 		bat2 = getbattery("/sys/class/power_supply/BAT1");
 		kbmap = execscript("setxkbmap -query | grep layout | cut -d':' -f 2- | tr -d ' '");
 		tmlocal = getlocaltime("%Y-%m-%d %H:%M (%Z)");
+		network = execscript("nmcli networking connectivity");
+		vpn = getvpnstatus();
 
-		status = smprintf("K:%s  B:%s/%s  %s", kbmap, bat1, bat2, tmlocal);
+		status = smprintf("N:%s  V:%s  K:%s  B:%s/%s  %s", network, vpn, kbmap, bat1, bat2, tmlocal);
 		setstatus(status);
 
+		free(network);
+		free(vpn);
 		free(kbmap);
 		free(bat1);
 		free(bat2);
@@ -264,4 +288,3 @@ main(void)
 
 	return 0;
 }
-
