@@ -74,6 +74,40 @@ mktimes(char *fmt, char *tzname)
 	return smprintf("%s", buf);
 }
 
+char *
+getlocaltime(char *fmt)
+{
+	FILE *fp;
+	char buf[129];
+	char tzname[129];
+	time_t tim;
+	struct tm *timtm;
+
+	fp = popen("timedatectl show -p Timezone --value", "r");
+	if (fp == NULL) {
+		fprintf(stderr, "Error retrieving timezone\n");
+		return smprintf("");
+	}
+
+	while (fgets(tzname, sizeof(tzname), fp) != NULL)
+		;
+	pclose(fp);
+	tzname[strcspn(tzname, "\n")] = 0;
+
+	settz(tzname);
+	tim = time(NULL);
+	timtm = localtime(&tim);
+	if (timtm == NULL)
+		return smprintf("");
+
+	if (!strftime(buf, sizeof(buf)-1, fmt, timtm)) {
+		fprintf(stderr, "strftime == 0\n");
+		return smprintf("");
+	}
+
+	return smprintf("%s", buf);
+}
+
 void
 setstatus(char *str)
 {
@@ -156,8 +190,6 @@ getbattery(char *base)
 		status = '-';
 	} else if(!strncmp(co, "Charging", 8)) {
 		status = '+';
-	} else {
-		status = '?';
 	}
 
 	if (remcap < 0 || descap < 0)
@@ -202,15 +234,10 @@ int
 main(void)
 {
 	char *status;
-	char *avgs;
-	char *bat;
-	char *tmar;
-	char *tmutc;
-	char *tmbln;
-	char *t0;
-	char *t1;
+	char *bat1;
+	char *bat2;
 	char *kbmap;
-	char *surfs;
+	char *tmlocal;
 
 	if (!(dpy = XOpenDisplay(NULL))) {
 		fprintf(stderr, "dwmstatus: cannot open display.\n");
@@ -218,31 +245,19 @@ main(void)
 	}
 
 	for (;;sleep(30)) {
-		avgs = loadavg();
-		bat = getbattery("/sys/class/power_supply/BAT0");
-		tmar = mktimes("%H:%M", tzargentina);
-		tmutc = mktimes("%H:%M", tzutc);
-		tmbln = mktimes("KW %W %a %d %b %H:%M %Z %Y", tzberlin);
+		bat1 = getbattery("/sys/class/power_supply/BAT0");
+		bat2 = getbattery("/sys/class/power_supply/BAT1");
 		kbmap = execscript("setxkbmap -query | grep layout | cut -d':' -f 2- | tr -d ' '");
-		surfs = execscript("surf-status");
-		t0 = gettemperature("/sys/devices/virtual/thermal/thermal_zone0", "temp");
-		t1 = gettemperature("/sys/devices/virtual/thermal/thermal_zone1", "temp");
+		tmlocal = getlocaltime("%Y-%m-%d %H:%M (%Z)");
 
-		status = smprintf("S:%s K:%s T:%s|%s L:%s B:%s A:%s U:%s %s",
-				surfs, kbmap, t0, t1, avgs, bat, tmar, tmutc,
-				tmbln);
+		status = smprintf("K:%s  B:%s/%s  %s", kbmap, bat1, bat2, tmlocal);
 		setstatus(status);
 
-		free(surfs);
 		free(kbmap);
-		free(t0);
-		free(t1);
-		free(avgs);
-		free(bat);
-		free(tmar);
-		free(tmutc);
-		free(tmbln);
+		free(bat1);
+		free(bat2);
 		free(status);
+		free(tmlocal);
 	}
 
 	XCloseDisplay(dpy);
